@@ -38,7 +38,7 @@ async def process_frame(frame):
                 pil_image = Image.fromarray(face_image)
                 pil_image.save('unknown_face.jpg')
 
-                await send_photo('unknown_face.jpg')
+            await send_photo('unknown_face.jpg')
 
 
 async def on_startup():
