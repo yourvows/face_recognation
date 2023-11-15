@@ -13,15 +13,14 @@ dp = Dispatcher(bot)
 picture_of_me = fr.load_image_file("me.jpg")
 my_face_encoding = fr.face_encodings(picture_of_me)[0]
 
+known_face_encodings = [my_face_encoding]
+known_face_names = ['Ibrohim']
+
 
 async def send_photo(photo_path):
     print("Face is not recognized")
     with open(photo_path, 'rb') as photo:
         await bot.send_photo(chat_id=USER_ID, photo=photo)
-
-
-known_face_encodings = [my_face_encoding]
-known_face_names = ['Ibrohim']
 
 
 async def process_frame(frame):
@@ -31,15 +30,13 @@ async def process_frame(frame):
     for face_encoding, face_location in zip(face_encodings, face_locations):
         is_match = fr.compare_faces(known_face_encodings, face_encoding)
         top, right, bottom, left = face_location
-        if any(is_match):
 
-            matched_name = known_face_names[is_match.index(True)]
-            color = (0, 255, 0)
-        else:
-            matched_name = 'UNKNOWN'
-            color = (0, 0, 255)
+        color = (0, 255, 0) if any(is_match) else (0, 0, 255)
+        matched_name = known_face_names[is_match.index(True)] if any(is_match) else 'UNKNOWN'
+
         cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
         cv2.putText(frame, matched_name, (left, bottom + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
         if not any(is_match):
             face_image = frame[top:bottom, left:right]
             pil_image = Image.fromarray(face_image)
@@ -58,9 +55,11 @@ async def main():
         while True:
             ret, frame = video_capture.read()
             face_locations = fr.face_locations(frame)
+
             for face_location in face_locations:
                 top, right, bottom, left = face_location
                 cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+
             await process_frame(frame)
             cv2.imshow('Video', frame)
 
