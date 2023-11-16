@@ -1,7 +1,8 @@
+import os
+
 import asyncio
 import cv2
 import face_recognition as fr
-from PIL import Image
 from aiogram import Bot, Dispatcher
 
 TOKEN = '5746482080:AAEXD3ufpUKUJ0Pgj0ofJapVCycGLxFF11k'
@@ -10,42 +11,54 @@ USER_ID = '837097830'
 bot = Bot(TOKEN)
 dp = Dispatcher(bot)
 
-picture_of_me = fr.load_image_file("me.jpg")
-my_face_encoding = fr.face_encodings(picture_of_me)[0]
+known_faces_folder = "known_faces"
+known_face_encodings = []
+known_face_names = []
 
-known_face_encodings = [my_face_encoding]
-known_face_names = ['Ibrohim']
+for filename in os.listdir(known_faces_folder):
+    if filename.endswith((".jpg", ".png")):
+        image_path = os.path.join(known_faces_folder, filename)
+        image = fr.load_image_file(image_path)
+
+        face_encoding = fr.face_encodings(image)[0]
+        known_face_encodings.append(face_encoding)
+        known_face_names.append(os.path.splitext(filename)[0])
 
 
 async def send_photo(photo_path):
-    print("Face is not recognized")
     with open(photo_path, 'rb') as photo:
         await bot.send_photo(chat_id=USER_ID, photo=photo)
 
 
 async def process_frame(frame):
-    face_locations = fr.face_locations(frame)
-    face_encodings = fr.face_encodings(frame, face_locations)
+    face_locations = fr.face_locations(frame, model="cnn")
+    face_encodings = []
+
+    for face_location in face_locations:
+        top, right, bottom, left = face_location
+        face_image = frame[top:bottom, left:right]
+
+        try:
+            face_encoding = fr.face_encodings(face_image)[0]
+            face_encodings.append(face_encoding)
+        except IndexError:
+            print("No face found in the given image.")
 
     for face_encoding, face_location in zip(face_encodings, face_locations):
-        is_match = fr.compare_faces(known_face_encodings, face_encoding)
+        matches = fr.compare_faces(known_face_encodings, face_encoding)
         top, right, bottom, left = face_location
 
-        color = (0, 255, 0) if any(is_match) else (0, 0, 255)
-        matched_name = known_face_names[is_match.index(True)] if any(is_match) else 'UNKNOWN'
+        color = (0, 255, 0) if any(matches) else (0, 0, 255)
+        matched_names = [known_face_names[i] for i, match in enumerate(matches) if match]
 
         cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
-        cv2.putText(frame, matched_name, (left, bottom + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        for name in matched_names:
+            cv2.putText(frame, name, (left, bottom + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-        if not any(is_match):
+        if not any(matches):
             face_image = frame[top:bottom, left:right]
-            pil_image = Image.fromarray(face_image)
-            pil_image.save('unknown_face.jpg')
+            cv2.imwrite('unknown_face.jpg', face_image)
             await send_photo('unknown_face.jpg')
-
-
-async def on_startup():
-    await bot.send_message(chat_id=USER_ID, text='Bot has been started')
 
 
 async def main():
@@ -72,6 +85,8 @@ async def main():
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(on_startup())
     asyncio.ensure_future(main())
     loop.run_forever()
+
+# TOKEN = '5746482080:AAEXD3ufpUKUJ0Pgj0ofJapVCycGLxFF11k'
+# USER_ID = '837097830'
