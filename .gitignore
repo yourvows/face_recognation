@@ -1,3 +1,6 @@
 # created by virtualenv automatically
 .idea
 Lib
+Scripts
+known_faces
+.vs

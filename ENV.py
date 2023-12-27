@@ -1,0 +1,6 @@
+BOT_TOKEN='5746482080:AAEXD3ufpUKUJ0Pgj0ofJapVCycGLxFF11k'
+USER_ID = '837097830'
+KNOWN_FACES_DIR = 'known_faces'
+KNOWN_ENCODINGS_PATH = 'datas/known_face_encodings.npy'
+KNOWN_FACE_NAMES_PATH = 'datas/known_face_names.npy'
+UNKNOWN_FACES_DIR_PATH = 'unknown_faces'
