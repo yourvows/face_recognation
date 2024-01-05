@@ -10,21 +10,18 @@ from ENV import BOT_TOKEN, UNKNOWN_FACES_DIR_PATH, USER_ID, KNOWN_FACES_DIR
 from aiogram import Bot, types, Dispatcher, executor
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.dispatcher.middlewares import BaseMiddleware
-from markups import stats_menu, confirm_add_face, add_face_menu
-from utils import clear_directory, unknown_faces_saver, unknown_faces_sender
+from markups import create_stats_menu, create_confirm_add_face_menu, create_add_face_menu
+from utils import clear_directory, save_unknown_face, send_unknown_face
 
 bot = Bot(BOT_TOKEN)
 dp = Dispatcher(bot)
 
 face_queue = queue.Queue()
-tolerance_queue = queue.Queue()
-add_face = False
-num_faces = 0
+is_add_face_mode_active = False
+detected_face_count = 0
 face_name = ''
 name = ''
-admin = USER_ID
-
-unknown_face_num = -1
+selected_unknown_face_index = -1
 added_students_indexes = []
 unknown_face_encodings = []
 sended_photo = None
@@ -35,7 +32,7 @@ class LoggingMiddleware(BaseMiddleware):
     async def on_process_message(self, message: types.Message, data: dict):
 
         if message.photo:
-            photo_id = message.photo[-1].file_id  # Получаем ID самой большой версии фотографии
+            photo_id = message.photo[-1].file_id
             print(f" отправил фотографию с ID: {message.photo}")
         else:
             print(f"отправил сообщение: {message.text}")
@@ -52,9 +49,29 @@ async def set_default_commands(dp):
     ])
 
 
+def is_allowed_user(message: types.Message):
+    """Check if the message is from the allowed user."""
+    return message.from_user.id == int(USER_ID)
+
+
+def allowed_user_only(handler):
+    """Decorator to restrict access to a handler to only the allowed user."""
+
+    async def wrapper(message: types.Message, *args, **kwargs):
+        if message.from_user.id != int(USER_ID):
+            return
+        return await handler(message, *args, **kwargs)
+
+    return wrapper
+
+
 async def initialize_bot():
     await clear_directory(UNKNOWN_FACES_DIR_PATH)
     await set_default_commands(dp)
+
+
+def run_coroutine_threadsafe(coro, loop):
+    asyncio.run_coroutine_threadsafe(coro, loop)
 
 
 def update_known_face_encodings():
@@ -83,45 +100,55 @@ update_thread = threading.Thread(target=update_known_face_encodings)
 update_thread.start()
 
 
-async def reg_name(message):
+async def register_face_name(message):
     global face_name
     face_name = message.text
 
-    await bot.send_message(admin,
+    await bot.send_message(USER_ID,
                            f'Вы добавляете человека с именем: **{face_name}** ?',
-                           reply_markup=confirm_add_face, parse_mode='Markdown')
+                           reply_markup=create_confirm_add_face_menu(),
+                           parse_mode='Markdown'
+                           )
 
 
 @dp.message_handler(commands=['start'])
-async def start(message: types.Message):
-    global admin
-    admin = USER_ID
-
+@allowed_user_only
+async def start(message: types.Message, **kwargs):
+    if not is_allowed_user(message):
+        await message.answer("Вы не имеете доступа к этому боту")
+        return
     await message.answer(f"Привет, {message.from_user.full_name}!\n"
                          f"Я бот который распознает лица в реальном времени.\n"
                          f"Чтобы воспользоваться моими функциями, используйте команды.\n")
 
 
 @dp.message_handler(commands=['stats'])
-async def stats(message: types.Message):
-    await message.answer("Выберите что вы хотите узнать", reply_markup=stats_menu)
+@allowed_user_only
+async def stats(message: types.Message, **kwargs):
+    await message.answer("Выберите что вы хотите узнать", reply_markup=create_stats_menu())
+
+
+def create_unknown_faces_markup(index):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    add_student_button = types.InlineKeyboardButton(text='Добавить лицо в базу данных',
+                                                    callback_data=f'add_face-{index}')
+    markup.add(add_student_button)
+    return markup
 
 
 @dp.message_handler(commands=['unknown_faces'])
-async def unknown_faces(message: types.Message):
-    if (len(unknown_face_encodings) == 0):
+@allowed_user_only
+async def unknown_faces(message: types.Message, **kwargs):
+    if not unknown_face_encodings:
         await message.answer("Неизвестных лиц не обнаружено")
     else:
-        await message.answer("Фотографии неизвестиных лиц:")
-        for k in range(len(unknown_face_encodings)):
+        await message.answer("Фотографии неизвестных лиц:")
+        for k, encoding in enumerate(unknown_face_encodings):
             if k not in added_students_indexes:
-                markup_inline_name_to_unknown = types.InlineKeyboardMarkup(row_width=1)
-                item_add_student = types.InlineKeyboardButton(text='Добавить лицо в бвзу данных',
-                                                              callback_data=f'add_face-{k}')
-                markup_inline_name_to_unknown.add(item_add_student)
-
-                with open(f'unknown_faces/unknown_face_{k}.jpg', 'rb') as photo:
-                    await bot.send_photo(admin, photo, reply_markup=markup_inline_name_to_unknown)
+                markup = create_unknown_faces_markup(k)
+                photo_path = f'unknown_faces/unknown_face_{k}.jpg'
+                with open(photo_path, 'rb') as photo:
+                    await bot.send_photo(USER_ID, photo, reply_markup=markup)
 
 
 @dp.message_handler(content_types=types.ContentTypes.PHOTO)
@@ -130,12 +157,12 @@ async def handle_photo(message: types.Message):
 
     sended_photo = message.photo[-1].file_id
     waiting_for_name = True
-    await message.reply("Введите имя для сохранения фотографии:", reply_markup=add_face_menu)
+    await message.reply("Введите имя для сохранения фотографии:", reply_markup=create_add_face_menu())
 
 
 @dp.message_handler(content_types=types.ContentTypes.TEXT)
 async def handle_text(message: types.Message):
-    global waiting_for_name, sended_photo, face_name, add_face
+    global waiting_for_name, sended_photo, face_name, is_add_face_mode_active
     if waiting_for_name:
         face_name = message.text
         waiting_for_name = False
@@ -156,46 +183,70 @@ async def handle_text(message: types.Message):
         await message.reply(f"Фотография сохранена как: {face_name}.jpg")
         face_name = ''
         waiting_for_name = False
-    elif add_face:
-        await reg_name(message)
+    elif is_add_face_mode_active:
+        await register_face_name(message)
 
 
 @dp.message_handler(content_types=types.ContentTypes.TEXT)
 async def check(message: types.Message):
-    global add_face
-    if add_face:
-        await reg_name(message)
+    global is_add_face_mode_active
+    if is_add_face_mode_active:
+        await register_face_name(message)
+
+
+async def handle_face_count():
+    await bot.send_message(USER_ID, f'{detected_face_count} обнаруженных лиц')
+
+
+async def handle_unknown_faces_count():
+    await bot.send_message(USER_ID, f'{len(unknown_face_encodings)} неизвестных лиц')
+
+
+async def handle_add_face(call_data):
+    selected_unknown_face_index = int(call_data.split('-')[1])
+    await bot.send_message(USER_ID, "Введите имя для сохранения фотографии:", reply_markup=create_add_face_menu())
+    global is_add_face_mode_active
+    is_add_face_mode_active = True
+
+
+async def handle_yes():
+    await bot.send_message(USER_ID, 'Лицо добавлено в базу данных')
+    global is_add_face_mode_active, selected_unknown_face_index, face_name
+    is_add_face_mode_active = False
+    student_face_encoding = unknown_face_encodings[selected_unknown_face_index]
+    face_queue.put((face_name, student_face_encoding, selected_unknown_face_index))
+
+
+async def handle_no():
+    await bot.send_message(USER_ID, "Введите имя для сохранения фотографии:", reply_markup=create_add_face_menu())
+
+
+async def handle_cancel():
+    global is_add_face_mode_active, waiting_for_name, face_name
+    is_add_face_mode_active = False
+    waiting_for_name = False
+    face_name = ''
+    await bot.send_message(USER_ID, "Добавление отменено")
+
+
+callback_actions = {
+    'face_count': handle_face_count,
+    'unknown_faces_count': handle_unknown_faces_count,
+    'yes': handle_yes,
+    'no': handle_no,
+    'cancel': handle_cancel,
+}
 
 
 @dp.callback_query_handler(lambda call: True)
-async def callback_query_handler(call: types.CallbackQuery):
-    global add_face, unknown_face_num, name, waiting_for_name, face_name
-
-    if call.data == 'face_count':
-        await bot.send_message(admin, f'{num_faces} обнаруженных лиц')
-    elif call.data == 'unknown_faces_count':
-        await bot.send_message(admin, f'{len(unknown_face_encodings)} неизвестных лиц')
-
-    elif call.data.startswith("add_face-"):
-        unknown_face_num = int(call.data.split('-')[1])
-        await bot.send_message(admin, "Введите имя для сохранения фотографии:", reply_markup=add_face_menu)
-        add_face = True
-
-    elif call.data == "yes":
-        await bot.send_message(admin, 'Лицо добавлено в базу данных')
-        add_face = False
-
-        student_face_encoding = unknown_face_encodings[unknown_face_num]
-        face_queue.put((face_name, student_face_encoding, unknown_face_num))
-
-    elif call.data == "no":
-        await bot.send_message(admin, "Введите имя для сохранения фотографии:", reply_markup=add_face_menu)
-
-    elif call.data == "cancel":
-        add_face = False
-        waiting_for_name = False
-        face_name = ''
-        await bot.send_message(admin, "Добавление отменено")
+async def callback_query(call: types.CallbackQuery):
+    action = call.data
+    if action.startswith("add_face-"):
+        await handle_add_face(action)
+    else:
+        handler = callback_actions.get(action)
+        if handler:
+            await handler()
 
 
 if os.path.exists('datas/added_face_encodings.npy'):
@@ -215,8 +266,8 @@ else:
 os.makedirs('unknown_faces', exist_ok=True)
 
 
-def face_rec():
-    global num_faces, admin
+def start_face_recognition(loop):
+    global detected_face_count, USER_ID
 
     video_capture = cv2.VideoCapture(0)
 
@@ -224,7 +275,7 @@ def face_rec():
         ret, frame = video_capture.read()
         face_locations = fr.face_locations(frame)
         face_encodings = fr.face_encodings(frame, face_locations)
-        num_faces = len(face_locations)
+        detected_face_count = len(face_locations)
 
         i = 0
         for face_encoding in face_encodings:
@@ -247,8 +298,8 @@ def face_rec():
 
                 unknown_face_counter = len(unknown_face_encodings)
 
-                unknown_faces_saver(face_image, unknown_face_counter)
-                unknown_faces_sender(unknown_face_counter, bot, admin)
+                save_unknown_face(face_image, unknown_face_counter)
+                run_coroutine_threadsafe(send_unknown_face(unknown_face_counter, bot, USER_ID), loop)
 
                 unknown_face_encodings.append(face_encoding)
 
@@ -266,10 +317,9 @@ def face_rec():
     cv2.destroyAllWindows()
 
 
-face_recognition_thread = threading.Thread(target=face_rec)
-face_recognition_thread.start()
-
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
+    face_recognition_thread = threading.Thread(target=start_face_recognition, args=(loop,))
+    face_recognition_thread.start()
     loop.run_until_complete(initialize_bot())
     executor.start_polling(dp, skip_updates=True)
