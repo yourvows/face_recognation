@@ -8,7 +8,6 @@ import face_recognition as fr
 import numpy as np
 from ENV import BOT_TOKEN, UNKNOWN_FACES_DIR_PATH, USER_ID, KNOWN_FACES_DIR
 from aiogram import Bot, types, Dispatcher, executor
-from aiogram.dispatcher.middlewares import BaseMiddleware
 from markups import create_stats_menu, create_confirm_add_face_menu, create_add_face_menu
 from utils import clear_directory, save_unknown_face, send_unknown_face
 
@@ -25,27 +24,6 @@ added_students_indexes = []
 unknown_face_encodings = []
 sent_photo = None
 waiting_for_name = False
-
-
-class LoggingMiddleware(BaseMiddleware):
-    async def on_process_message(self, message: types.Message, data: dict):
-
-        if message.photo:
-            photo_id = message.photo[-1].file_id
-            print(f" отправил фотографию с ID: {message.photo}")
-        else:
-            print(f"отправил сообщение: {message.text}")
-
-
-dp.middleware.setup(LoggingMiddleware())
-
-
-async def set_default_commands(dp):
-    await dp.bot.set_my_commands([
-        types.BotCommand("start", "Перезапустить бота"),
-        types.BotCommand("stats", "Статистика"),
-        types.BotCommand("unknown_faces", "Неизвестные лица"),
-    ])
 
 
 def is_allowed_user(message: types.Message):
@@ -66,7 +44,11 @@ def allowed_user_only(handler):
 
 async def initialize_bot():
     await clear_directory(UNKNOWN_FACES_DIR_PATH)
-    await set_default_commands(dp)
+    await dp.bot.set_my_commands([
+        types.BotCommand("start", "Перезапустить бота"),
+        types.BotCommand("stats", "Статистика"),
+        types.BotCommand("unknown_faces", "Неизвестные лица"),
+    ])
 
 
 def run_coroutine_threadsafe(coro, loop):
@@ -77,19 +59,14 @@ def update_known_face_encodings():
     global unknown_face_encodings
     while True:
         try:
-
             face_data = face_queue.get(timeout=1)
             face_name, encoding, index = face_data
-
             known_face_names.append(face_name)
             known_face_encodings.append(encoding)
-
             added_face_names.append(face_name)
             added_face_encodings.append(encoding)
-
             np.save('datas/added_face_encodings.npy', added_face_encodings)
             np.save('datas/added_face_names.npy', added_face_names)
-
             added_students_indexes.append(index)
         except queue.Empty:
             pass
@@ -102,7 +79,6 @@ update_thread.start()
 async def register_face_name(message):
     global face_name
     face_name = message.text
-
     await bot.send_message(USER_ID,
                            f'Вы добавляете человека с именем: **{face_name}** ?',
                            reply_markup=create_confirm_add_face_menu(),
