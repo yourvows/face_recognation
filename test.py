@@ -8,7 +8,6 @@ import face_recognition as fr
 import numpy as np
 from ENV import BOT_TOKEN, UNKNOWN_FACES_DIR_PATH, USER_ID, KNOWN_FACES_DIR
 from aiogram import Bot, types, Dispatcher, executor
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.dispatcher.middlewares import BaseMiddleware
 from markups import create_stats_menu, create_confirm_add_face_menu, create_add_face_menu
 from utils import clear_directory, save_unknown_face, send_unknown_face
@@ -24,7 +23,7 @@ name = ''
 selected_unknown_face_index = -1
 added_students_indexes = []
 unknown_face_encodings = []
-sended_photo = None
+sent_photo = None
 waiting_for_name = False
 
 
@@ -153,20 +152,20 @@ async def unknown_faces(message: types.Message, **kwargs):
 
 @dp.message_handler(content_types=types.ContentTypes.PHOTO)
 async def handle_photo(message: types.Message):
-    global sended_photo, waiting_for_name
+    global sent_photo, waiting_for_name
 
-    sended_photo = message.photo[-1].file_id
+    sent_photo = message.photo[-1].file_id
     waiting_for_name = True
     await message.reply("Введите имя для сохранения фотографии:", reply_markup=create_add_face_menu())
 
 
 @dp.message_handler(content_types=types.ContentTypes.TEXT)
 async def handle_text(message: types.Message):
-    global waiting_for_name, sended_photo, face_name, is_add_face_mode_active
+    global waiting_for_name, sent_photo, face_name, is_add_face_mode_active
     if waiting_for_name:
         face_name = message.text
         waiting_for_name = False
-        photo = await bot.get_file(sended_photo)
+        photo = await bot.get_file(sent_photo)
         download_path = os.path.join(KNOWN_FACES_DIR, f'{face_name}.jpg')
         file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{photo.file_path}"
 

@@ -1,6 +1,7 @@
 # created by virtualenv automatically
-.idea
-Lib
-Scripts
+.idea/
+Lib/
+Scripts/
 known_faces
-.vs
+.vs/
+__pycache__/
