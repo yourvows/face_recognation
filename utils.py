@@ -1,7 +1,6 @@
 import os
 import shutil
 import cv2
-import sys
 
 
 async def clear_directory(directory_path):
@@ -21,18 +20,18 @@ async def clear_directory(directory_path):
     print(f"Directory '{directory_path}' cleared successfully.")
 
 
-def unknown_faces_saver(face_image, unknown_face_counter):
+def save_unknown_face(face_image, unknown_face_counter):
     file_directory = 'unknown_faces'
     os.makedirs(file_directory, exist_ok=True)
     filename = os.path.join(file_directory, f'unknown_face_{unknown_face_counter}.jpg')
     cv2.imwrite(filename, face_image)
 
 
-async def unknown_faces_sender(unknown_face_counter, bot, admin):
+async def send_unknown_face(unknown_face_counter, bot, admin):
     filename = os.path.join('unknown_faces', f'unknown_face_{unknown_face_counter}.jpg')
     if os.path.exists(filename):
         with open(filename, 'rb') as photo:
             await bot.send_photo(admin, photo)
-        await bot.send_message(admin, 'Unknown face detected')
+        await bot.send_message(admin, 'Обнаружено неизвестное лицо')
     else:
         print(f"File {filename} not found.")
