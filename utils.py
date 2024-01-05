@@ -1,11 +1,11 @@
 import os
 import shutil
 import cv2
+import sys
 
 
 async def clear_directory(directory_path):
     if not os.path.exists(directory_path):
-        print(f"Directory {directory_path} does not exist.")
         return
 
     for file_name in os.listdir(directory_path):
