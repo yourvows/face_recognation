@@ -6,7 +6,7 @@ import asyncio
 import cv2
 import face_recognition as fr
 import numpy as np
-from ENV import BOT_TOKEN, UNKNOWN_FACES_DIR_PATH, USER_ID, KNOWN_FACES_DIR
+from env import BOT_TOKEN, UNKNOWN_FACES_DIR_PATH, USER_ID, KNOWN_FACES_DIR
 from aiogram import Bot, types, Dispatcher, executor
 from markups import create_stats_menu, create_confirm_add_face_menu, create_add_face_menu
 from utils import clear_directory, save_unknown_face, send_unknown_face
@@ -45,9 +45,8 @@ def allowed_user_only(handler):
 async def initialize_bot():
     await clear_directory(UNKNOWN_FACES_DIR_PATH)
     await dp.bot.set_my_commands([
-        types.BotCommand("start", "Перезапустить бота"),
-        types.BotCommand("stats", "Статистика"),
-        types.BotCommand("unknown_faces", "Неизвестные лица"),
+        types.BotCommand("start", "Запустить бота"),
+        types.BotCommand("add_unknown_faces", "Добавить неизвестные лица"),
     ])
 
 
@@ -111,9 +110,9 @@ def create_unknown_faces_markup(index):
     return markup
 
 
-@dp.message_handler(commands=['unknown_faces'])
+@dp.message_handler(commands=['add_unknown_faces'])
 @allowed_user_only
-async def unknown_faces(message: types.Message, **kwargs):
+async def add_unknown_faces(message: types.Message, **kwargs):
     if not unknown_face_encodings:
         await message.answer("Неизвестных лиц не обнаружено")
     else:
@@ -169,14 +168,6 @@ async def check(message: types.Message):
         await register_face_name(message)
 
 
-async def handle_face_count():
-    await bot.send_message(USER_ID, f'{detected_face_count} обнаруженных лиц')
-
-
-async def handle_unknown_faces_count():
-    await bot.send_message(USER_ID, f'{len(unknown_face_encodings)} неизвестных лиц')
-
-
 async def handle_add_face(call_data):
     selected_unknown_face_index = int(call_data.split('-')[1])
     await bot.send_message(USER_ID, "Введите имя для сохранения фотографии:", reply_markup=create_add_face_menu())
@@ -205,8 +196,6 @@ async def handle_cancel():
 
 
 callback_actions = {
-    'face_count': handle_face_count,
-    'unknown_faces_count': handle_unknown_faces_count,
     'yes': handle_yes,
     'no': handle_no,
     'cancel': handle_cancel,

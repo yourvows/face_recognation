@@ -2,7 +2,7 @@ import os
 
 import face_recognition as fr
 import numpy as np
-from ENV import KNOWN_FACES_DIR, KNOWN_FACE_NAMES_PATH, KNOWN_ENCODINGS_PATH
+from env import KNOWN_FACES_DIR, KNOWN_FACE_NAMES_PATH, KNOWN_ENCODINGS_PATH
 
 known_face_encodings = []
 known_face_names = []
