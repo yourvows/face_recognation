@@ -1,6 +1,7 @@
 # Face Recognition via Telegram
 
 This Python script sends unrecognized faces captured by your camera to your Telegram account.
+python3.9!!!
 
 ## Installation
 
